@@ -3,6 +3,7 @@ package xlsx
 import (
 	"encoding/xml"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"path/filepath"
@@ -33,7 +34,7 @@ func (s *Sheet) parseSheet() error {
 	linkmap := make(map[string]string)
 	base := filepath.Base(s.docname)
 	sub := strings.TrimSuffix(s.docname, base)
-	relsname := filepath.Join(sub, "_rels", base+".rels")
+	relsname := fmt.Sprintf("%s%s/%s", sub, "_rels", base+".rels")
 	dec, clo, err := s.d.openXML(relsname)
 	if err == nil {
 		// rels might not exist for every sheet

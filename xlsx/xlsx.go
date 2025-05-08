@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"encoding/xml"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -79,7 +80,7 @@ func Open(filename string) (grate.Source, error) {
 	// parse the secondary relationships to primary doc
 	base := filepath.Base(d.primaryDoc)
 	sub := strings.TrimSuffix(d.primaryDoc, base)
-	relfn := filepath.Join(sub, "_rels", base+".rels")
+	relfn := fmt.Sprintf("%s%s/%s", sub, "_rels", base+".rels")
 	dec, c, err = d.openXML(relfn)
 	if err != nil {
 		return nil, err

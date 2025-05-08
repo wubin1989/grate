@@ -3,9 +3,9 @@ package xlsx
 import (
 	"encoding/xml"
 	"errors"
+	"fmt"
 	"io"
 	"log"
-	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -32,7 +32,7 @@ func (d *Document) parseRels(dec *xml.Decoder, basedir string) error {
 					// handle malformed "absolute" paths cleanly
 					d.rels[vals["Type"]][vals["Id"]] = vals["Target"][1:]
 				} else {
-					d.rels[vals["Type"]][vals["Id"]] = filepath.Join(basedir, vals["Target"])
+					d.rels[vals["Type"]][vals["Id"]] = fmt.Sprintf("%s%s", basedir, vals["Target"])
 				}
 				if vals["Type"] == "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" {
 					d.primaryDoc = vals["Target"]
