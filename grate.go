@@ -3,6 +3,7 @@
 package grate
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"io/fs"
@@ -100,8 +101,20 @@ func OpenFile(file fs.File) (Source, error) {
 
 // OpenReader opens a tabular data file from an io.ReadCloser and returns a Source for accessing its contents.
 func OpenReader(reader io.ReadCloser) (Source, error) {
+	// 首先读取reader的所有内容到内存中
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, err
+	}
+	// 关闭原始reader
+	if err := reader.Close(); err != nil {
+		return nil, err
+	}
+
 	for _, o := range readerTable {
-		src, err := o.op(reader)
+		// 为每个opener创建一个新的reader，保证每个处理器都能读取完整数据
+		clonedReader := io.NopCloser(bytes.NewReader(data))
+		src, err := o.op(clonedReader)
 		if err == nil {
 			return src, nil
 		}
