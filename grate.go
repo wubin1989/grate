@@ -4,6 +4,7 @@ package grate
 
 import (
 	"errors"
+	"io"
 	"io/fs"
 	"log"
 	"sort"
@@ -59,6 +60,10 @@ type OpenFunc func(filename string) (Source, error)
 // It should return ErrNotInFormat immediately if the file is not of the correct file type.
 type OpenFileFunc func(file fs.File) (Source, error)
 
+// OpenReaderFunc defines a Source's instantiation function that works with io.ReadCloser.
+// It should return ErrNotInFormat immediately if the reader content is not of the correct file type.
+type OpenReaderFunc func(reader io.ReadCloser) (Source, error)
+
 // Open a tabular data file and return a Source for accessing it's contents.
 func Open(filename string) (Source, error) {
 	for _, o := range srcTable {
@@ -93,6 +98,23 @@ func OpenFile(file fs.File) (Source, error) {
 	return nil, ErrUnknownFormat
 }
 
+// OpenReader opens a tabular data file from an io.ReadCloser and returns a Source for accessing its contents.
+func OpenReader(reader io.ReadCloser) (Source, error) {
+	for _, o := range readerTable {
+		src, err := o.op(reader)
+		if err == nil {
+			return src, nil
+		}
+		if !errors.Is(err, ErrNotInFormat) {
+			return nil, err
+		}
+		if Debug {
+			log.Println("reader is not in", o.name, "format")
+		}
+	}
+	return nil, ErrUnknownFormat
+}
+
 type srcOpenTab struct {
 	name string
 	pri  int
@@ -105,8 +127,15 @@ type fileOpenTab struct {
 	op   OpenFileFunc
 }
 
+type readerOpenTab struct {
+	name string
+	pri  int
+	op   OpenReaderFunc
+}
+
 var srcTable = make([]*srcOpenTab, 0, 20)
 var fileTable = make([]*fileOpenTab, 0, 20)
+var readerTable = make([]*readerOpenTab, 0, 20)
 
 // Register the named source as a grate datasource implementation.
 func Register(name string, priority int, opener OpenFunc) error {
@@ -128,6 +157,18 @@ func RegisterFile(name string, priority int, opener OpenFileFunc) error {
 	fileTable = append(fileTable, &fileOpenTab{name: name, pri: priority, op: opener})
 	sort.Slice(fileTable, func(i, j int) bool {
 		return fileTable[i].pri < fileTable[j].pri
+	})
+	return nil
+}
+
+// RegisterReader registers the named source as a grate datasource implementation for io.ReadCloser.
+func RegisterReader(name string, priority int, opener OpenReaderFunc) error {
+	if Debug {
+		log.Println("Registering the", name, "format for io.ReadCloser at priority", priority)
+	}
+	readerTable = append(readerTable, &readerOpenTab{name: name, pri: priority, op: opener})
+	sort.Slice(readerTable, func(i, j int) bool {
+		return readerTable[i].pri < readerTable[j].pri
 	})
 	return nil
 }

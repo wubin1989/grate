@@ -44,6 +44,30 @@ func OpenFile(file fs.File) (*Document, error) {
 	return d, nil
 }
 
+// OpenReader opens a Compound File Binary Format document from an io.ReadCloser.
+func OpenReader(reader io.ReadCloser) (*Document, error) {
+	// Read all data from the reader
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, err
+	}
+	
+	// Close the reader since we've read all data
+	if err := reader.Close(); err != nil {
+		return nil, err
+	}
+	
+	// Create a bytes.Reader that implements io.ReadSeeker
+	rs := bytes.NewReader(data)
+	
+	d := &Document{}
+	err = d.load(rs)
+	if err != nil {
+		return nil, err
+	}
+	return d, nil
+}
+
 // List the streams contained in the document.
 func (d *Document) List() ([]string, error) {
 	var res []string

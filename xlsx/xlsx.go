@@ -19,6 +19,7 @@ import (
 
 var _ = grate.Register("xlsx", 5, Open)
 var _ = grate.RegisterFile("xlsx", 5, OpenFile)
+var _ = grate.RegisterReader("xlsx", 5, OpenReader)
 
 // Document contains an Office Open XML document.
 type Document struct {
@@ -123,6 +124,43 @@ func OpenFile(file fs.File) (grate.Source, error) {
 
 	d := &Document{
 		f: closer,
+		r: z,
+	}
+
+	err = d.init()
+	if err != nil {
+		d.Close()
+		return nil, err
+	}
+
+	return d, nil
+}
+
+// OpenReader opens an Excel workbook from an io.ReadCloser.
+func OpenReader(reader io.ReadCloser) (grate.Source, error) {
+	// Read all data from the reader
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, err
+	}
+	
+	// Close the reader since we've read all data
+	if err := reader.Close(); err != nil {
+		return nil, err
+	}
+
+	// Create a bytes.Reader that implements io.ReaderAt for zip.NewReader
+	br := bytes.NewReader(data)
+	
+	// Create a zip reader
+	z, err := zip.NewReader(br, int64(len(data)))
+	if err != nil {
+		return nil, grate.WrapErr(err, grate.ErrNotInFormat)
+	}
+
+	// Create and initialize the document
+	d := &Document{
+		f: nil, // We already closed the reader
 		r: z,
 	}
 

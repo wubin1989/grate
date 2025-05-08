@@ -23,6 +23,7 @@ import (
 
 var _ = grate.Register("xls", 1, Open)
 var _ = grate.RegisterFile("xls", 1, OpenFile)
+var _ = grate.RegisterReader("xls", 1, OpenReader)
 
 // WorkBook represents an Excel workbook containing 1 or more sheets.
 type WorkBook struct {
@@ -88,6 +89,32 @@ func OpenFile(file fs.File) (grate.Source, error) {
 	b := &WorkBook{
 		doc: doc,
 
+		pos2substream: make(map[int64]int, 16),
+		xfs:           make([]uint16, 0, 128),
+	}
+
+	rdr, err := doc.Open("Workbook")
+	if err != nil {
+		return nil, grate.WrapErr(err, grate.ErrNotInFormat)
+	}
+	raw, err := io.ReadAll(rdr)
+	if err != nil {
+		return nil, err
+	}
+
+	err = b.loadFromStream(raw)
+	return b, err
+}
+
+// OpenReader opens an Excel workbook from an io.ReadCloser.
+func OpenReader(reader io.ReadCloser) (grate.Source, error) {
+	doc, err := cfb.OpenReader(reader)
+	if err != nil {
+		return nil, err
+	}
+
+	b := &WorkBook{
+		doc:           doc,
 		pos2substream: make(map[int64]int, 16),
 		xfs:           make([]uint16, 0, 128),
 	}
