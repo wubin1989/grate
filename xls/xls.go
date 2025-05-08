@@ -11,16 +11,18 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"io/fs"
 	"log"
 	"sync"
 
-	"github.com/pbnjay/grate"
-	"github.com/pbnjay/grate/commonxl"
-	"github.com/pbnjay/grate/xls/cfb"
-	"github.com/pbnjay/grate/xls/crypto"
+	"github.com/wubin1989/grate"
+	"github.com/wubin1989/grate/commonxl"
+	"github.com/wubin1989/grate/xls/cfb"
+	"github.com/wubin1989/grate/xls/crypto"
 )
 
 var _ = grate.Register("xls", 1, Open)
+var _ = grate.RegisterFile("xls", 1, OpenFile)
 
 // WorkBook represents an Excel workbook containing 1 or more sheets.
 type WorkBook struct {
@@ -58,6 +60,33 @@ func Open(filename string) (grate.Source, error) {
 	b := &WorkBook{
 		filename: filename,
 		doc:      doc,
+
+		pos2substream: make(map[int64]int, 16),
+		xfs:           make([]uint16, 0, 128),
+	}
+
+	rdr, err := doc.Open("Workbook")
+	if err != nil {
+		return nil, grate.WrapErr(err, grate.ErrNotInFormat)
+	}
+	raw, err := io.ReadAll(rdr)
+	if err != nil {
+		return nil, err
+	}
+
+	err = b.loadFromStream(raw)
+	return b, err
+}
+
+// OpenFile opens an Excel workbook from an fs.File.
+func OpenFile(file fs.File) (grate.Source, error) {
+	doc, err := cfb.OpenFile(file)
+	if err != nil {
+		return nil, err
+	}
+
+	b := &WorkBook{
+		doc: doc,
 
 		pos2substream: make(map[int64]int, 16),
 		xfs:           make([]uint16, 0, 128),

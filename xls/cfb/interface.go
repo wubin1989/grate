@@ -1,8 +1,10 @@
 package cfb
 
 import (
+	"bytes"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 )
 
@@ -13,7 +15,29 @@ func Open(filename string) (*Document, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer f.Close()
 	err = d.load(f)
+	if err != nil {
+		return nil, err
+	}
+	return d, nil
+}
+
+// OpenFile opens a Compound File Binary Format document from an fs.File.
+func OpenFile(file fs.File) (*Document, error) {
+	// Ensure the file implements io.ReadSeeker
+	rs, ok := file.(io.ReadSeeker)
+	if !ok {
+		// If not a ReadSeeker, we'll read all contents and create a bytes.Reader
+		data, err := io.ReadAll(file)
+		if err != nil {
+			return nil, err
+		}
+		rs = bytes.NewReader(data)
+	}
+
+	d := &Document{}
+	err := d.load(rs)
 	if err != nil {
 		return nil, err
 	}

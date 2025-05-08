@@ -4,7 +4,7 @@ import "errors"
 
 var (
 	// configure at build time by adding go build arguments:
-	//   -ldflags="-X github.com/pbnjay/grate.loglevel=debug"
+	//   -ldflags="-X github.com/wubin1989/grate.loglevel=debug"
 	loglevel string = "warn"
 
 	// Debug should be set to true to expose detailed logging.
