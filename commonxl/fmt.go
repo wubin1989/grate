@@ -67,14 +67,7 @@ func identFunc(x *Formatter, v interface{}) string {
 			return s
 		}
 	case float64:
-		s := strconv.FormatFloat(x, 'f', -1, 64)
-		if len(s) <= 11 || (len(s) == 12 && x < 0) {
-			return s
-		}
-		s = strconv.FormatFloat(x, 'g', 6, 64)
-		if len(s) <= 11 {
-			return s
-		}
+		return strconv.FormatFloat(x, 'g', -1, 64)
 	case string:
 		return x
 	case fmt.Stringer:

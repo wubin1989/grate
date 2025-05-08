@@ -2,25 +2,28 @@ package xlsx
 
 import (
 	"archive/zip"
+	"bytes"
 	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/pbnjay/grate"
-	"github.com/pbnjay/grate/commonxl"
+	"github.com/wubin1989/grate"
+	"github.com/wubin1989/grate/commonxl"
 )
 
 var _ = grate.Register("xlsx", 5, Open)
+var _ = grate.RegisterFile("xlsx", 5, OpenFile)
 
 // Document contains an Office Open XML document.
 type Document struct {
 	filename   string
-	f          *os.File
+	f          io.Closer
 	r          *zip.Reader
 	primaryDoc string
 
@@ -39,7 +42,10 @@ func (d *Document) Close() error {
 	d.strings = nil
 	d.sheets = d.sheets[:0]
 	d.sheets = nil
-	return d.f.Close()
+	if d.f != nil {
+		return d.f.Close()
+	}
+	return nil
 }
 
 func Open(filename string) (grate.Source, error) {
@@ -61,20 +67,90 @@ func Open(filename string) (grate.Source, error) {
 		r:        z,
 	}
 
+	err = d.init()
+	if err != nil {
+		d.Close()
+		return nil, err
+	}
+
+	return d, nil
+}
+
+// OpenFile opens an Excel workbook from an fs.File.
+func OpenFile(file fs.File) (grate.Source, error) {
+	// We need to check if the file implements ReaderAt for zip.NewReader
+	ra, ok := file.(io.ReaderAt)
+	if !ok {
+		// If not a ReaderAt, we need to read all bytes to use a bytes.Reader
+		data, err := io.ReadAll(file)
+		if err != nil {
+			return nil, err
+		}
+		if closer, ok := file.(io.Closer); ok {
+			closer.Close()
+		}
+
+		// Create a dummy readerat that's backed by the data
+		type readAtCloser struct {
+			io.ReaderAt
+			io.Closer
+		}
+		ra = &readAtCloser{
+			ReaderAt: bytes.NewReader(data),
+			Closer:   io.NopCloser(nil),
+		}
+		file = nil // we've already closed it if possible
+	}
+
+	// Get file size
+	stat, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+
+	z, err := zip.NewReader(ra, stat.Size())
+	if err != nil {
+		return nil, grate.WrapErr(err, grate.ErrNotInFormat)
+	}
+
+	// Only set f to file if it's a closer, otherwise leave it nil
+	var closer io.Closer
+	if file != nil {
+		if c, ok := file.(io.Closer); ok {
+			closer = c
+		}
+	}
+
+	d := &Document{
+		f: closer,
+		r: z,
+	}
+
+	err = d.init()
+	if err != nil {
+		d.Close()
+		return nil, err
+	}
+
+	return d, nil
+}
+
+// init initializes the document by parsing relationships and workbook structure
+func (d *Document) init() error {
 	d.rels = make(map[string]map[string]string, 4)
 
 	// parse the primary relationships
 	dec, c, err := d.openXML("_rels/.rels")
 	if err != nil {
-		return nil, grate.WrapErr(err, grate.ErrNotInFormat)
+		return grate.WrapErr(err, grate.ErrNotInFormat)
 	}
 	err = d.parseRels(dec, "")
 	c.Close()
 	if err != nil {
-		return nil, grate.WrapErr(err, grate.ErrNotInFormat)
+		return grate.WrapErr(err, grate.ErrNotInFormat)
 	}
 	if d.primaryDoc == "" {
-		return nil, errors.New("xlsx: invalid document")
+		return errors.New("xlsx: invalid document")
 	}
 
 	// parse the secondary relationships to primary doc
@@ -83,23 +159,23 @@ func Open(filename string) (grate.Source, error) {
 	relfn := fmt.Sprintf("%s%s/%s", sub, "_rels", base+".rels")
 	dec, c, err = d.openXML(relfn)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	err = d.parseRels(dec, sub)
 	c.Close()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	// parse the workbook structure
 	dec, c, err = d.openXML(d.primaryDoc)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	err = d.parseWorkbook(dec)
 	c.Close()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	styn := d.rels["http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles"]
@@ -107,12 +183,12 @@ func Open(filename string) (grate.Source, error) {
 		// parse the shared string table
 		dec, c, err = d.openXML(sst)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		err = d.parseStyles(dec)
 		c.Close()
 		if err != nil {
-			return nil, err
+			return err
 		}
 	}
 
@@ -121,16 +197,16 @@ func Open(filename string) (grate.Source, error) {
 		// parse the shared string table
 		dec, c, err = d.openXML(sst)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		err = d.parseSharedStrings(dec)
 		c.Close()
 		if err != nil {
-			return nil, err
+			return err
 		}
 	}
 
-	return d, nil
+	return nil
 }
 
 func (d *Document) openXML(name string) (*xml.Decoder, io.Closer, error) {

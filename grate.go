@@ -4,6 +4,7 @@ package grate
 
 import (
 	"errors"
+	"io/fs"
 	"log"
 	"sort"
 )
@@ -54,6 +55,10 @@ type Collection interface {
 // It should return ErrNotInFormat immediately if filename is not of the correct file type.
 type OpenFunc func(filename string) (Source, error)
 
+// OpenFileFunc defines a Source's instantiation function that works with fs.File.
+// It should return ErrNotInFormat immediately if the file is not of the correct file type.
+type OpenFileFunc func(file fs.File) (Source, error)
+
 // Open a tabular data file and return a Source for accessing it's contents.
 func Open(filename string) (Source, error) {
 	for _, o := range srcTable {
@@ -71,13 +76,37 @@ func Open(filename string) (Source, error) {
 	return nil, ErrUnknownFormat
 }
 
+// OpenFile opens a tabular data file from an fs.File and returns a Source for accessing its contents.
+func OpenFile(file fs.File) (Source, error) {
+	for _, o := range fileTable {
+		src, err := o.op(file)
+		if err == nil {
+			return src, nil
+		}
+		if !errors.Is(err, ErrNotInFormat) {
+			return nil, err
+		}
+		if Debug {
+			log.Println("file is not in", o.name, "format")
+		}
+	}
+	return nil, ErrUnknownFormat
+}
+
 type srcOpenTab struct {
 	name string
 	pri  int
 	op   OpenFunc
 }
 
+type fileOpenTab struct {
+	name string
+	pri  int
+	op   OpenFileFunc
+}
+
 var srcTable = make([]*srcOpenTab, 0, 20)
+var fileTable = make([]*fileOpenTab, 0, 20)
 
 // Register the named source as a grate datasource implementation.
 func Register(name string, priority int, opener OpenFunc) error {
@@ -87,6 +116,18 @@ func Register(name string, priority int, opener OpenFunc) error {
 	srcTable = append(srcTable, &srcOpenTab{name: name, pri: priority, op: opener})
 	sort.Slice(srcTable, func(i, j int) bool {
 		return srcTable[i].pri < srcTable[j].pri
+	})
+	return nil
+}
+
+// RegisterFile registers the named source as a grate datasource implementation for fs.File.
+func RegisterFile(name string, priority int, opener OpenFileFunc) error {
+	if Debug {
+		log.Println("Registering the", name, "format for fs.File at priority", priority)
+	}
+	fileTable = append(fileTable, &fileOpenTab{name: name, pri: priority, op: opener})
+	sort.Slice(fileTable, func(i, j int) bool {
+		return fileTable[i].pri < fileTable[j].pri
 	})
 	return nil
 }
