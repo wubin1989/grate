@@ -1,6 +1,7 @@
 package commonxl
 
 import (
+	"github.com/araddon/dateparse"
 	"strings"
 	"time"
 )
@@ -50,6 +51,12 @@ func timeFmtFunc(f string) FmtFunc {
 		if !ok {
 			fval, ok := convertToFloat64(v)
 			if !ok {
+				if timeStr, ok := v.(string); ok {
+					_, err := dateparse.ParseLocal(timeStr)
+					if err == nil {
+						return timeStr
+					}
+				}
 				return "MUST BE time.Time OR numeric TO FORMAT CORRECTLY"
 			}
 			t = x.ConvertToDate(fval)
